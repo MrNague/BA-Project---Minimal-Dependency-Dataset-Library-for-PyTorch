@@ -20,10 +20,6 @@ The goal of this project is to analyse performance bottlenecks in the data loadi
 | 6 | Add built-in instrumentation (MonitoredQueue + MetricsTracker) | Done |
 | 7 | Run benchmark sweep: 9 batch sizes × 6 worker counts, 100k images | Done |
 | 8 | Compare against PyTorch DataLoader on same hardware/data | Done |
-| 9 | Benchmark loading from remote storage (/ds-sds) | Pending |
-| 10 | Implement DDP sampler for multi-GPU training | Pending |
-| 11 | Upgrade worker pool to multiprocessing (bypass GIL limitation) | Pending |
-| 12 | Final report / thesis write-up | Pending |
 
 ## Key Results
 
