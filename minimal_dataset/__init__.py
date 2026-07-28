@@ -10,6 +10,7 @@ Usage:
         # train...
 """
 from .dataset import BaseDataset
+from .dataloader_mp import DataLoaderMP
 from .sampler import LockFreeSampler
 from .dataloader import DataLoader
 from .monitored_queue import MonitoredQueue
