@@ -1,23 +1,28 @@
 # Python
+
 __pycache__/
 *.pyc
 *.pyo
 
 # Virtual environment
+
 venv/
 
 # SLURM output logs
+
 *.out
 *.err
 slurm_*.out
 slurm_*.err
 
 # Large data / checkpoints (too big for GitHub)
+
 /netscratch/
 *.pth
 checkpoint_*.pth
 
 # temp files
+
 /tmp/
 *.swp
 *~
