@@ -36,24 +36,9 @@ pytorch_actual = {
     4096: {1: 279.6, 2: 550.2, 4: 1037.9, 8: 1828.8, 16: 2536.3, 32: 2734.6},
 }
 
-# Plot 1: Our DataLoader - Throughput vs Workers
-fig, ax = plt.subplots(figsize=(10, 6))
-colors = plt.cm.Blues(np.linspace(0.3, 1, 6))
-for i, (bs, vals) in enumerate(ours.items()):
-    ax.plot(workers, vals, 'o-', color=colors[i], label=f'BS={bs}', linewidth=2, markersize=6)
-ax.set_xlabel('Number of Workers', fontsize=12)
-ax.set_ylabel('Throughput (samples/s)', fontsize=12)
-ax.set_title('Our DataLoader: Throughput vs Workers (Parquet, 100k images)', fontsize=14)
-ax.legend(loc='lower right', ncol=2)
-ax.grid(True, alpha=0.3)
-ax.set_xscale('log', base=2)
-ax.set_xticks(workers)
-ax.set_xticklabels(workers)
-plt.tight_layout()
-plt.savefig('/netscratch/nague/plot_ours_throughput.png', dpi=150)
-print("Saved: plot_ours_throughput.png")
 
-# Plot 2: PyTorch DataLoader - Throughput vs Workers
+
+# Plot 1: PyTorch DataLoader - Throughput vs Workers
 fig, ax = plt.subplots(figsize=(10, 6))
 colors = plt.cm.Greens(np.linspace(0.3, 1, 5))
 for i, (bs, vals) in enumerate(pytorch_actual.items()):
@@ -65,30 +50,15 @@ ax.set_ylabel('Throughput (samples/s)', fontsize=12)
 ax.set_title('PyTorch DataLoader: Throughput vs Workers', fontsize=14)
 ax.legend(loc='lower right')
 ax.grid(True, alpha=0.3)
-ax.set_xscale('log', base=2)
+#ax.set_xscale('log', base=2)
 ax.set_xticks(workers)
 ax.set_xticklabels(workers)
 plt.tight_layout()
-plt.savefig('/netscratch/nague/plot_pytorch_throughput.png', dpi=150)
+plt.savefig('docs/images/plot_pytorch_throughput.png', dpi=150)
 print("Saved: plot_pytorch_throughput.png")
 
-# Plot 3: Direct Comparison at BS=16
-fig, ax = plt.subplots(figsize=(10, 6))
-ax.plot(workers, ours[16], 'o-', color='blue', label='Our DataLoader (BS=16)', linewidth=2, markersize=8)
-ax.plot(workers, pytorch[16], 's--', color='green', label='PyTorch DataLoader (BS=16)', linewidth=2, markersize=8)
-ax.set_xlabel('Number of Workers', fontsize=12)
-ax.set_ylabel('Throughput (samples/s)', fontsize=12)
-ax.set_title('Our DataLoader vs PyTorch DataLoader (BS=16)', fontsize=14)
-ax.legend(fontsize=12)
-ax.grid(True, alpha=0.3)
-ax.set_xscale('log', base=2)
-ax.set_xticks(workers)
-ax.set_xticklabels(workers)
-plt.tight_layout()
-plt.savefig('/netscratch/nague/plot_comparison_bs16.png', dpi=150)
-print("Saved: plot_comparison_bs16.png")
 
-# Plot 4: Speedup comparison
+# Plot 2: Speedup comparison
 fig, ax = plt.subplots(figsize=(10, 6))
 base_ours = ours[16][0]
 base_pytorch = pytorch[16][0]
@@ -100,11 +70,11 @@ ax.set_ylabel('Speedup (× vs 1 worker)', fontsize=12)
 ax.set_title('Scaling Efficiency: Our DataLoader vs PyTorch (BS=16)', fontsize=14)
 ax.legend(fontsize=12)
 ax.grid(True, alpha=0.3)
-ax.set_xscale('log', base=2)
+#ax.set_xscale('log', base=2)
 ax.set_xticks(workers)
 ax.set_xticklabels(workers)
 plt.tight_layout()
-plt.savefig('/netscratch/nague/plot_speedup_comparison.png', dpi=150)
+plt.savefig('docs/images/plot_speedup_comparison.png', dpi=150)
 print("Saved: plot_speedup_comparison.png")
 
 print("Done! All plots saved.")
