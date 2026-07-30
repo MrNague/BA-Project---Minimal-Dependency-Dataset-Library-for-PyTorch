@@ -39,7 +39,7 @@ ax.legend(fontsize=11)
 ax.grid(True, alpha=0.3)
 ax.set_xticks(workers)
 plt.tight_layout()
-plt.savefig('/netscratch/nague/plot_ours_throughput.png', dpi=150)
+plt.savefig('docs/images/plot_ours_throughput.png', dpi=150)
 print("Saved: plot_ours_throughput.png")
 
 # ============================================================
@@ -56,7 +56,7 @@ ax.legend(fontsize=12)
 ax.grid(True, alpha=0.3)
 ax.set_xticks(workers)
 plt.tight_layout()
-plt.savefig('/netscratch/nague/plot_comparison_bs16.png', dpi=150)
+plt.savefig('docs/images/plot_comparison_bs16.png', dpi=150)
 print("Saved: plot_comparison_bs16.png")
 
 # ============================================================
@@ -76,7 +76,7 @@ ax.legend(fontsize=11)
 ax.grid(True, alpha=0.3)
 ax.set_xticks(workers)
 plt.tight_layout()
-plt.savefig('/netscratch/nague/plot_speedup.png', dpi=150)
+plt.savefig('docs/images/plot_speedup.png', dpi=150)
 print("Saved: plot_speedup.png")
 
 # ============================================================
@@ -108,10 +108,10 @@ ax.set_xticklabels(categories, fontsize=11)
 ax.legend(fontsize=11)
 ax.grid(True, alpha=0.3, axis='y')
 plt.tight_layout()
-plt.savefig('/netscratch/nague/plot_local_vs_remote.png', dpi=150)
+plt.savefig('docs/images/plot_local_vs_remote.png', dpi=150)
 print("Saved: plot_local_vs_remote.png")
 
 # Copy to docs
-os.system('cp /netscratch/nague/plot_*.png ~/bachelor-project/docs/images/')
+#os.system('cp /netscratch/nague/plot_*.png ~/bachelor-project/docs/images/')
 print("Copied to docs/images/")
 print("Done!")
