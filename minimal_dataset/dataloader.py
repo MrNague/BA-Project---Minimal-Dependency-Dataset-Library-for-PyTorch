@@ -5,6 +5,7 @@ import threading
 import time
 import json
 import os
+import statistics
 from typing import Optional, Callable
 
 import torch
@@ -34,6 +35,15 @@ class DataLoader:
         self._workers_done = 0
         self._tracker = MetricsTracker(num_workers)
 
+        # Per-stage timing
+        self._stage_times = {
+            "dataset": [],
+            "staging_put": [],
+            "collate": [],
+            "batch_put": [],
+        }
+        self._stage_lock = threading.Lock()
+
     def _worker(self, worker_id: int):
         indices = self.sampler.get_partition(worker_id)
         wm = self._tracker.get_worker(worker_id)
@@ -41,11 +51,15 @@ class DataLoader:
             if self._stop_event.is_set():
                 break
             wm.start_sample()
+            t0 = time.perf_counter()
             sample = self.dataset[idx]
+            t1 = time.perf_counter()
             wm.end_sample()
-            put_start = time.perf_counter()
             self.staging_queue.put(sample)
-            wm.record_idle(time.perf_counter() - put_start)
+            t2 = time.perf_counter()
+            with self._stage_lock:
+                self._stage_times["dataset"].append(t1 - t0)
+                self._stage_times["staging_put"].append(t2 - t1)
         self._workers_done += 1
 
     def _orchestrator(self):
@@ -57,15 +71,22 @@ class DataLoader:
                 if len(buffer) >= self.batch_size:
                     batch_samples = buffer[:self.batch_size]
                     buffer = buffer[self.batch_size:]
+                    t0 = time.perf_counter()
                     batch = self.collate_fn(batch_samples)
+                    t1 = time.perf_counter()
                     self.batch_queue.put(batch)
+                    t2 = time.perf_counter()
                     self._tracker.record_batch()
+                    with self._stage_lock:
+                        self._stage_times["collate"].append(t1 - t0)
+                        self._stage_times["batch_put"].append(t2 - t1)
             except Exception:
                 if self._workers_done >= self.num_workers and self.staging_queue.qsize() == 0:
                     break
         while len(buffer) >= self.batch_size:
-            batch = self.collate_fn(buffer[:self.batch_size])
+            batch_samples = buffer[:self.batch_size]
             buffer = buffer[self.batch_size:]
+            batch = self.collate_fn(batch_samples)
             self.batch_queue.put(batch)
             self._tracker.record_batch()
 
@@ -83,6 +104,7 @@ class DataLoader:
         self._threads = []
         self._workers_done = 0
         self._tracker = MetricsTracker(self.num_workers)
+        self._stage_times = {"dataset": [], "staging_put": [], "collate": [], "batch_put": []}
         for w in range(self.num_workers):
             t = threading.Thread(target=self._worker, args=(w,))
             t.start()
@@ -114,6 +136,19 @@ class DataLoader:
             self.staging_queue.stats(),
             self.batch_queue.stats()
         )
+        with self._stage_lock:
+            stage_stats = {}
+            for stage, times in self._stage_times.items():
+                if times:
+                    stage_stats[stage] = {
+                        "count": len(times),
+                        "mean_ms": round(statistics.mean(times) * 1000, 3),
+                        "std_ms": round(statistics.stdev(times) * 1000, 3) if len(times) > 1 else 0,
+                        "total_s": round(sum(times), 3),
+                    }
+                else:
+                    stage_stats[stage] = {"count": 0, "mean_ms": 0, "std_ms": 0, "total_s": 0}
+        summary["stage_times"] = stage_stats
         if self.metrics_dir:
             os.makedirs(self.metrics_dir, exist_ok=True)
             path = os.path.join(
