@@ -39,20 +39,28 @@ class ParquetDataset:
         return self._length
 
     def __getitem__(self, index: int):
-        # Read one row from the in-memory table
-        row = self._table.slice(index, 1).to_pylist()[0]
+	import time
 
+
+        # Read one row from the in-memory table
+	t0 = time.perf_counter()
+        row = self._table.slice(index, 1).to_pylist()[0]
         img_bytes = row['image']
         label = row['label']
+	t1 = time.perf_counter()
 
         # Decode image
         img = Image.open(io.BytesIO(img_bytes)).convert('RGB')
-
         # Preprocessing
         img, label = self.preprocess(img, label)
+	t2 = time.perf_counter()
 
         if self.transform:
             img = self.transform(img)
+
+	# Store timing info (accessible by DataLoader if needed)
+	self._last_io_time = t1 - t0
+	self._last_decode_time = t2 - t1
 
         return img, label
 
