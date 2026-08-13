@@ -37,11 +37,13 @@ class DataLoader:
 
         # Per-stage timing
         self._stage_times = {
-	    "io" : [],
+            "io": [],
             "decode": [],
+            "preprocess": [],
             "staging_put": [],
             "collate": [],
             "batch_put": [],
+            "total_sample": [],
         }
         self._stage_lock = threading.Lock()
 
@@ -53,25 +55,26 @@ class DataLoader:
                 break
             wm.start_sample()
 
-	    #stage 1a. row i/o (reading from parquet table)
             t0 = time.perf_counter()
             sample = self.dataset[idx]
             t1 = time.perf_counter()
 
             wm.end_sample()
 
-	    #Get sub-stage timing from dataset
-	    io_time = getattr(self.dataset, '_last_io_time', 0)
-	    decode_time = getattr(self.dataset, '_last_decode_time', 0)
+            io_time = getattr(self.dataset, '_last_io_time', 0)
+            decode_time = getattr(self.dataset, '_last_decode_time', 0)
+            preprocess_time = getattr(self.dataset, '_last_preprocess_time', 0)
 
-	    #stage 1b. staging queue put
-            self.staging_queue.put(sample)
             t2 = time.perf_counter()
+            self.staging_queue.put(sample)
+            t3 = time.perf_counter()
 
             with self._stage_lock:
-	        self._stage_times["io"].append(io_time)
+                self._stage_times["io"].append(io_time)
                 self._stage_times["decode"].append(decode_time)
-                self._stage_times["staging_put"].append(t2 - t1)
+                self._stage_times["preprocess"].append(preprocess_time)
+                self._stage_times["staging_put"].append(t3 - t2)
+                self._stage_times["total_sample"].append(t1 - t0)
         self._workers_done += 1
 
     def _orchestrator(self):
@@ -116,7 +119,10 @@ class DataLoader:
         self._threads = []
         self._workers_done = 0
         self._tracker = MetricsTracker(self.num_workers)
-        self._stage_times = {"io": [], "decode": [], "staging_put": [], "collate": [], "batch_put": []}
+        self._stage_times = {
+            "io": [], "decode": [], "preprocess": [],
+            "staging_put": [], "collate": [], "batch_put": [], "total_sample": []
+        }
         for w in range(self.num_workers):
             t = threading.Thread(target=self._worker, args=(w,))
             t.start()
