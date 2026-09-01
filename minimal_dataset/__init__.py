@@ -16,3 +16,4 @@ from .dataloader import DataLoader
 from .monitored_queue import MonitoredQueue
 from .metrics import MetricsTracker, WorkerMetrics
 from .parquet_dataset import ParquetDataset
+from .dataloader_mp import DataLoaderMP

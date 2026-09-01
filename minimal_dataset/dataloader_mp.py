@@ -23,13 +23,33 @@ def _default_collate_fn(samples):
     return images, labels
 
 
-def _worker_fn(worker_id, dataset_factory, indices, staging_queue, stop_event):
+def _worker_fn(worker_id, dataset_factory, indices, staging_queue, stop_event, metric_queue):
+    """Worker process: creates its own dataset and loads samples."""
     dataset = dataset_factory()
+    stage_times = {"io": [], "decode": [], "preprocess": [], "staging_put": [], "total_sample": []}
+
     for idx in indices:
         if stop_event.is_set():
             break
+
+        t0 = time.perf_counter()
         sample = dataset[idx]
+        t1 = time.perf_counter()
+
+        io_time = getattr(dataset, '_last_io_time', 0)
+        decode_time = getattr(dataset, '_last_decode_time', 0)
+        preprocess_time = getattr(dataset, '_last_preprocess_time', 0)
+
         staging_queue.put(sample)
+        t2 = time.perf_counter()
+
+        stage_times["io"].append(io_time)
+        stage_times["decode"].append(decode_time)
+        stage_times["preprocess"].append(preprocess_time)
+        stage_times["staging_put"].append(t2 - t1)
+        stage_times["total_sample"].append(t1 - t0)
+
+    metric_queue.put(stage_times)
 
 
 def _orchestrator_fn(staging_queue, batch_queue, batch_size, stop_event, result_queue):
@@ -37,6 +57,8 @@ def _orchestrator_fn(staging_queue, batch_queue, batch_size, stop_event, result_
     batches_produced = 0
     empty_events = 0
     wait_time = 0.0
+    collate_times = []
+    batch_put_times = []
 
     while not stop_event.is_set():
         try:
@@ -47,8 +69,15 @@ def _orchestrator_fn(staging_queue, batch_queue, batch_size, stop_event, result_
             if len(buffer) >= batch_size:
                 batch_samples = buffer[:batch_size]
                 buffer = buffer[batch_size:]
+
+                t1 = time.perf_counter()
                 batch = _default_collate_fn(batch_samples)
+                t2 = time.perf_counter()
                 batch_queue.put(batch)
+                t3 = time.perf_counter()
+
+                collate_times.append(t2 - t1)
+                batch_put_times.append(t3 - t2)
                 batches_produced += 1
         except:
             empty_events += 1
@@ -64,6 +93,8 @@ def _orchestrator_fn(staging_queue, batch_queue, batch_size, stop_event, result_
         "batches_produced": batches_produced,
         "empty_events": empty_events,
         "wait_time": wait_time,
+        "collate_times": collate_times,
+        "batch_put_times": batch_put_times,
     })
 
 
@@ -77,10 +108,11 @@ class DataLoaderMP:
         self.num_workers = num_workers
         self.metrics_dir = metrics_dir
 
-        self._ctx = mp.get_context('spawn')
+        self._ctx = mp.get_context('fork')
         self.staging_queue = self._ctx.Queue(maxsize=max_staging_size)
         self.batch_queue = self._ctx.Queue(maxsize=max_batch_queue_size)
         self.result_queue = self._ctx.Queue()
+        self.metric_queue = self._ctx.Queue()
 
         self.sampler = LockFreeSampler(total_samples, num_workers, shuffle=True)
         self._stop_event = self._ctx.Event()
@@ -96,7 +128,7 @@ class DataLoaderMP:
             p = self._ctx.Process(
                 target=_worker_fn,
                 args=(w, self.dataset_factory, indices,
-                      self.staging_queue, self._stop_event)
+                      self.staging_queue, self._stop_event, self.metric_queue)
             )
             p.start()
             self._workers.append(p)
@@ -132,16 +164,63 @@ class DataLoaderMP:
         if self._orchestrator and self._orchestrator.is_alive():
             self._orchestrator.terminate()
             self._orchestrator.join(timeout=2.0)
+
+        # Collect worker metrics
+        worker_stage_times = {"io": [], "decode": [], "preprocess": [], "staging_put": [], "total_sample": []}
+        while not self.metric_queue.empty():
+            try:
+                stage_times = self.metric_queue.get_nowait()
+                for key in worker_stage_times:
+                    worker_stage_times[key].extend(stage_times.get(key, []))
+            except:
+                pass
+
+        # Collect orchestrator stats
         try:
             stats = self.result_queue.get_nowait()
         except:
-            stats = {"batches_produced": 0, "empty_events": 0, "wait_time": 0}
+            stats = {"batches_produced": 0, "empty_events": 0, "wait_time": 0,
+                     "collate_times": [], "batch_put_times": []}
+
+        # Build summary
+        import statistics
+        summary = {
+            "num_workers": self.num_workers,
+            "batches_produced": stats.get("batches_produced", 0),
+            "stage_times": {}
+        }
+        for key in ["io", "decode", "preprocess", "staging_put", "total_sample"]:
+            times = worker_stage_times[key]
+            if times:
+                summary["stage_times"][key] = {
+                    "count": len(times),
+                    "mean_ms": round(statistics.mean(times) * 1000, 3),
+                    "std_ms": round(statistics.stdev(times) * 1000, 3) if len(times) > 1 else 0,
+                }
+            else:
+                summary["stage_times"][key] = {"count": 0, "mean_ms": 0, "std_ms": 0}
+
+        collate_times = stats.get("collate_times", [])
+        batch_put_times = stats.get("batch_put_times", [])
+        summary["stage_times"]["collate"] = {
+            "count": len(collate_times),
+            "mean_ms": round(statistics.mean(collate_times) * 1000, 3) if collate_times else 0,
+            "std_ms": round(statistics.stdev(collate_times) * 1000, 3) if len(collate_times) > 1 else 0,
+        }
+        summary["stage_times"]["batch_put"] = {
+            "count": len(batch_put_times),
+            "mean_ms": round(statistics.mean(batch_put_times) * 1000, 3) if batch_put_times else 0,
+            "std_ms": round(statistics.stdev(batch_put_times) * 1000, 3) if len(batch_put_times) > 1 else 0,
+        }
+
         if self.metrics_dir:
             os.makedirs(self.metrics_dir, exist_ok=True)
             path = os.path.join(self.metrics_dir,
                                 f"metrics_mp_w{self.num_workers}_bs{self.batch_size}.json")
             with open(path, 'w') as f:
-                json.dump(stats, f, indent=2)
+                json.dump(summary, f, indent=2)
+
+        return summary
 
     def set_epoch(self, seed=None):
         self.sampler.reshuffle(seed)
